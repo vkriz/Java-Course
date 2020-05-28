@@ -1,0 +1,14 @@
+INDEX VERSION 1.131+C:\Users\vkriz\Java Course\.metadata\.plugins\org.eclipse.jdt.core
+3567739632.index
+3842647530.index
+3695727692.index
+1049660049.index
+1107556242.index
+1275336160.index
+2688519039.index
+2125425029.index
+3357721046.index
+1787186727.index
+999999248.index
+1304101937.index
+949812335.index

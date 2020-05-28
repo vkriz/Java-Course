@@ -1,0 +1,340 @@
+package hr.fer.zemris.java.raytracer;
+
+import java.util.List;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveAction;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import hr.fer.zemris.java.raytracer.model.GraphicalObject;
+import hr.fer.zemris.java.raytracer.model.IRayTracerAnimator;
+import hr.fer.zemris.java.raytracer.model.IRayTracerProducer;
+import hr.fer.zemris.java.raytracer.model.IRayTracerResultObserver;
+import hr.fer.zemris.java.raytracer.model.LightSource;
+import hr.fer.zemris.java.raytracer.model.Point3D;
+import hr.fer.zemris.java.raytracer.model.Ray;
+import hr.fer.zemris.java.raytracer.model.RayIntersection;
+import hr.fer.zemris.java.raytracer.model.Scene;
+import hr.fer.zemris.java.raytracer.viewer.RayTracerViewer;
+
+/**
+ * Razred omogućava renderiranje 3D objekata pomoću
+ * algoritma bacanja zrake (ray-caster algoritam) uz
+ * Phongov model osvjetljenja, a koji koristi
+ * paralelizaciju.
+ * Program rotira koordinatni sustav kako bi 
+ * korisnik mogao vidjet objekt sa svih strana.
+ * 
+ * @author Valentina Križ
+ *
+ */
+public class RayCasterParallel2 {
+	/**
+	 * Metoda od koje počinje izvođenje programa.
+	 * 
+	 * @param args argumenti komandne linije, ne koriste se
+	 */
+	public static void main(String[] args) {
+		RayTracerViewer.show(
+				getIRayTracerProducer(), getIRayTracerAnimator(), 30, 30
+				);
+	}
+	
+	/**
+	 * Metoda za pokretanje animacije.
+	 * 
+	 * @return IRayTracerAnimator objekt za izvršavanje animacije
+	 */
+	private static IRayTracerAnimator getIRayTracerAnimator() {
+		return new IRayTracerAnimator() {
+			long time;
+			@Override
+			public void update(long deltaTime) {
+				time += deltaTime;
+			}
+			@Override
+			public Point3D getViewUp() { // fixed in time
+				return new Point3D(0,0,10);
+			}
+			@Override
+			public Point3D getView() { // fixed in time
+				return new Point3D(-2,0,-0.5);
+			}
+			@Override
+			public long getTargetTimeFrameDuration() {
+				return 150; // redraw scene each 150 milliseconds
+			}
+			@Override
+			public Point3D getEye() { // changes in time
+				double t = (double)time / 10000 * 2 * Math.PI;
+				double t2 = (double)time / 5000 * 2 * Math.PI;
+				double x = 50*Math.cos(t);
+				double y = 50*Math.sin(t);
+				double z = 30*Math.sin(t2);
+				return new Point3D(x,y,z);
+			}
+		};
+	}
+	
+	/**
+	 * Razred predstavlja posao koji obavlja jedna
+	 * dretva za prikaz dijela 3D objekta.
+	 * 
+	 * @author Valentina Križ
+	 *
+	 */
+	public static class RaytracerJob extends RecursiveAction {
+		private static final long serialVersionUID = 1L;
+		
+		Point3D eye;
+		Point3D view;
+		Point3D viewUp;
+		double horizontal;
+		double vertical;
+		int height;
+		int width;
+		long requestNo;
+		AtomicBoolean cancel;
+		short[] red;
+		short[] green;
+		short[] blue;
+		int yMin;
+		int yMax;
+		static final int treshold = 70;
+		
+		/**
+		 * Konstruktor koji postavlja paramentre na 
+		 * predane vrijednosti. 
+		 * 
+		 * @param eye
+		 * @param view
+		 * @param viewUp
+		 * @param horizontal
+		 * @param vertical
+		 * @param width
+		 * @param height
+		 * @param requestNo
+		 * @param observer
+		 * @param cancel
+		 * @param red
+		 * @param green
+		 * @param blue
+		 * @param yMin
+		 * @param yMax
+		 */
+		public RaytracerJob(Point3D eye, Point3D view, Point3D viewUp,
+				double horizontal, double vertical, int width, int height, 
+				long requestNo, AtomicBoolean cancel, short[] red, short[] green, 
+				short[] blue, int yMin, int yMax) {
+			super();
+			this.eye = eye;
+			this.view = view;
+			this.viewUp = viewUp;
+			this.horizontal = horizontal;
+			this.vertical = vertical;
+			this.height = height;
+			this.width = width;
+			this.requestNo = requestNo;
+			this.cancel = cancel;
+			this.red = red;
+			this.green = green;
+			this.blue = blue;
+			this.yMin = yMin;
+			this.yMax = yMax;
+		}
+		
+		/**
+		 * Metoda za pokretanje izvršavanja posla.
+		 * Ako je posao dovoljno mali, posao se računa direktno,
+		 * inače se dijeli na dva podposla.
+		 * 
+		 */
+		@Override
+		protected void compute() {
+			if(yMax - yMin + 1 <= treshold) {
+				computeDirect();
+				return;
+			}
+			invokeAll(
+				new RaytracerJob(eye, view, viewUp, horizontal, vertical, width, height, requestNo, cancel, red, green, blue, yMin, yMin + (yMax - yMin) / 2),
+				new RaytracerJob(eye, view, viewUp, horizontal, vertical, width, height, requestNo, cancel, red, green, blue, yMin + (yMax - yMin) / 2, yMax)
+			);
+		}
+		
+		/**
+		 * Metoda za izravni izračun posla.
+		 */
+		public void computeDirect() {
+			Point3D normViewUp = viewUp.normalize();
+			
+			// postavljanje koordinatnog sustava
+			Point3D zAxis = view.sub(eye).normalize();
+			Point3D yAxis = normViewUp.sub(zAxis.scalarMultiply(zAxis.scalarProduct(normViewUp))).normalize();
+			Point3D xAxis = zAxis.vectorProduct(yAxis).normalize();
+			Point3D screenCorner = view.sub(xAxis.scalarMultiply(horizontal / 2)).add(yAxis.scalarMultiply(vertical / 2));
+			
+			Scene scene = RayTracerViewer.createPredefinedScene2();
+			short[] rgb = new short[3];
+			int offset = yMin * width;
+			// za svaku točku odredi u koju boju ju treba obojati
+			for(int y = yMin; y < yMax; y++) {
+				for(int x = 0; x < width; x++) {
+					Point3D screenPoint = screenCorner.add(xAxis.scalarMultiply((double)x / (width - 1) * horizontal))
+											.sub(yAxis.scalarMultiply((double)y / (height - 1) * vertical));
+					Ray ray = Ray.fromPoints(eye, screenPoint);
+					tracer(scene, ray, rgb);
+					red[offset] = rgb[0] > 255 ? 255 : rgb[0];
+					green[offset] = rgb[1] > 255 ? 255 : rgb[1];
+					blue[offset] = rgb[2] > 255 ? 255 : rgb[2];
+					offset++;
+				}
+			}
+		}
+	}
+	
+	/**
+	 * Metoda za pokretanje renderiranja 3D objekata.
+	 * Koristi ForkJoinPool za paralelizaciju.
+	 * 
+	 * @return IRayTracerProducer objekt za renderiranje
+	 */
+	private static IRayTracerProducer getIRayTracerProducer() {
+		return new IRayTracerProducer() {
+			@Override
+			public void produce(Point3D eye, Point3D view, Point3D viewUp,
+					double horizontal, double vertical, int width,
+					int height, long requestNo,
+					IRayTracerResultObserver observer,
+					AtomicBoolean cancel) {
+				System.out.println("Započinjem izračune...");
+				short[] red = new short[width*height];
+				short[] green = new short[width*height];
+				short[] blue = new short[width*height];
+				
+				ForkJoinPool pool = new ForkJoinPool();
+				pool.invoke(new RaytracerJob(eye, view, viewUp, horizontal, vertical, width, height, requestNo, cancel, red, green, blue, 0, height));
+				pool.shutdown();
+				
+				System.out.println("Izračuni gotovi...");
+				observer.acceptResult(red, green, blue, requestNo);
+				System.out.println("Dojava gotova...");
+			}
+		};
+	}
+	
+	/**
+	 * Metoda baca zraku i određuje boju u koju boja piksel.
+	 * 
+	 * @param scene
+	 * @param ray
+	 * @param rgb
+	 */
+	protected static void tracer(Scene scene, Ray ray, short[] rgb) {
+		// ako neće postojati presjek oboji u crno
+		rgb[0] = 0;
+		rgb[1] = 0;
+		rgb[2] = 0;
+		
+		// odredi najbliži presjek zrake i svih objekata u sceni
+		RayIntersection closest = findClosestIntersection(scene, ray);
+		
+		// ako presjek postoji, odredi u koju boju treba obojati piksel koji zraka pogodi
+		if(closest != null) {
+			determineColorFor(scene, closest, rgb, ray);
+		}
+	}
+
+	/**
+	 * Metoda za određivanje boje točke koju zraka
+	 * pogodi nakon odbijanja o neki od objekata u sceni.
+	 * 
+	 * @param scene
+	 * @param closest
+	 * @param rgb
+	 * @param ray
+	 */
+	private static void determineColorFor(Scene scene, RayIntersection closest, short[] rgb, Ray ray) {
+		// ambijentna komponenta
+		rgb[0] = 15;
+		rgb[1] = 15;
+		rgb[2] = 15;
+		
+		// dohvati sve izvore svjetlosti
+		List<LightSource> lights = scene.getLights();
+		
+		// za svaki izvor svjetlosti
+		for(LightSource light : lights) {
+			// odredi zraku koja ide iz izvora svjetlosti do presjeka 
+			Ray r = Ray.fromPoints(light.getPoint(), closest.getPoint());
+			
+			// pronađi najbliži presjek te zrake i svih objekata u sceni
+			RayIntersection s = findClosestIntersection(scene, r);
+			
+			// ako postoji presjek i bliži je, neki objekt zaklanja izvor svjetlosti, zanemari ga
+			if(s != null && light.getPoint().sub(s.getPoint()).norm() + 10e-10 < light.getPoint().sub(closest.getPoint()).norm()) {
+				continue;
+			} else {
+				// inače dodaj difuznu i zrcalnu komponentu tog izvora svjetlosti
+				addComponents(rgb, s, light, ray);
+			}
+		}
+	}
+
+	private static void addComponents(short[] rgb, RayIntersection s, LightSource light, Ray ray) {
+		if(s == null) {
+			return;
+		}
+		
+		// vektor normale na površinu objekta (normiran)
+		Point3D n = s.getNormal().normalize();
+		// vektor zrake iz točke presjeka prema izvoru svjetlosti (normiran)
+		Point3D l = light.getPoint().sub(s.getPoint()).normalize();
+		// kosinus kuta između n i l, pomoću skalarnog produkta
+		double nl = n.scalarProduct(l);
+				
+		// difuzna komponenta za svaku boju
+		// intenzitet točkastog izvora * koeficijent refleksije + kosinus kuta između n i l
+		// ako je nl < 0 promatrana točka nije vidljiva pa je boja crna
+		rgb[0] += light.getR() * s.getKdr() * Math.max(0, nl);
+		rgb[1] += light.getG() * s.getKdg() * Math.max(0, nl);
+		rgb[2] += light.getB() * s.getKdb() * Math.max(0, nl);
+				
+		// vektor reflektirane zrake
+		Point3D r = (n.scalarMultiply(2 * nl)).sub(l).normalize();
+		// vektor usmjeren iz točke površine prema promatraču (oku)
+		Point3D v = ray.start.sub(s.getPoint()).normalize();
+				
+		double rv = r.scalarProduct(v);
+				
+		// zrcalna komponenta za svaku boju
+		if(rv >= 0) {
+			double cos = Math.pow(rv, s.getKrn());
+			rgb[0] += light.getR() * s.getKrr() * cos;
+			rgb[1] += light.getG() * s.getKrg() * cos;
+			rgb[2] += light.getB() * s.getKrb() * cos;
+		}
+	}
+
+	/**
+	 * Metoda za pronalazak najbližeg presjeka zrake sa svim objektima u sceni.
+	 * 
+	 * @param scene
+	 * @param ray
+	 * @return najbliži presjek
+	 */
+	private static RayIntersection findClosestIntersection(Scene scene, Ray ray) {
+		List<GraphicalObject> objects = scene.getObjects();
+		RayIntersection closest = null;
+		
+		for(GraphicalObject object : objects) {
+			RayIntersection intersection = object.findClosestRayIntersection(ray);
+			
+			// ako je prvi pronađeni presjek ili bliži od do sad najbližeg
+			if(intersection != null && (closest == null || intersection.getDistance() < closest.getDistance())) {
+				closest = intersection;
+			}
+		}
+		
+		return closest;
+	}
+
+}
