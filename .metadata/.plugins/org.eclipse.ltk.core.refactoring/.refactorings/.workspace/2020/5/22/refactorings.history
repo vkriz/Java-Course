@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">&#x0A;<refactoring comment="Delete resource &apos;hw02-1191236512&apos;" deleteContents="false" description="Delete resource &apos;hw02-1191236512&apos;" element1="/hw02-1191236512" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1590661525984"/>&#x0A;<refactoring comment="Delete 7 resources" deleteContents="false" description="Delete 7 resources" element1="/hw03-1191236512" element2="/hw04-1191236512" element3="/hw05-1191236512" element4="/hw06-1191236512" element5="/hw09-1191236512" element6="/hw10-1191236512" element7="/hw11-1191236512" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="7" stamp="1590661538239"/>
-</session>
