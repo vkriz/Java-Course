@@ -10,13 +10,34 @@ import java.util.HashMap;
 import hr.fer.zemris.java.webserver.RequestContext;
 import hr.fer.zemris.java.webserver.RequestContext.RCCookie;
 
+/**
+ * Pomoćni program za demonstraciju
+ * mogućnosti razreda RequestContext.
+ * Program prima ime datoteke i encoding
+ * u koju treba upisati generirani header.
+ * 
+ * @author Valentina Križ
+ *
+ */
 public class DemoRequestContext {
+	/**
+	 * Metoda od koje počinje izvođenje programa
+	 * 
+	 * @param args argumenti komandne linije
+	 * @throws IOException
+	 */
 	public static void main(String[] args) throws IOException {
 		demo1("primjer1.txt", "ISO-8859-2");
 		demo1("primjer2.txt", "UTF-8");
 		demo2("primjer3.txt", "UTF-8");
 	}
 
+	/**
+	 * Metoda za demo1
+	 * @param filePath
+	 * @param encoding
+	 * @throws IOException
+	 */
 	private static void demo1(String filePath, String encoding) throws IOException {
 		OutputStream os = Files.newOutputStream(Paths.get(filePath));
 		RequestContext rc = new RequestContext(os, new HashMap<String, String>(),
@@ -31,6 +52,12 @@ public class DemoRequestContext {
 		os.close();
 	}
 
+	/**
+	 * Metoda za demo2
+	 * @param filePath
+	 * @param encoding
+	 * @throws IOException
+	 */
 	private static void demo2(String filePath, String encoding) throws IOException {
 		OutputStream os = Files.newOutputStream(Paths.get(filePath));
 		RequestContext rc = new RequestContext(os, new HashMap<String, String>(),

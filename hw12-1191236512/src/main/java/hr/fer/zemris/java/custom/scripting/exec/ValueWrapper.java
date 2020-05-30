@@ -151,16 +151,16 @@ public class ValueWrapper {
 	 * 			koji nije ValueWrapper, Integer, Double ili null
 	 */
 	private Object getNumericalValue(Object object) {
-		if(object instanceof ValueWrapper) {
-			// ako je ValueWrapper gledaj samo value
-			object = ((ValueWrapper) object).value;
-		}
-		
 		// null se tretira kao Integer 0
 		if(object == null) {
 			return Integer.valueOf(0);
 		}
 		
+		if(object instanceof ValueWrapper) {
+			// ako je ValueWrapper gledaj samo value
+			object = ((ValueWrapper) object).value;
+		}
+				
 		if(object instanceof Integer || object instanceof Double) {
 			return object;
 		}
@@ -179,5 +179,10 @@ public class ValueWrapper {
 		}
 
 		throw new IllegalArgumentException("Unsupported argument type.");
+	}
+	
+	@Override
+	public String toString() {
+		return value.toString();
 	}
 } 
