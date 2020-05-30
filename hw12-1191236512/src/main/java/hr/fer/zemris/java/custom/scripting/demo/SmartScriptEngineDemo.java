@@ -12,9 +12,21 @@ import java.util.Map;
 import hr.fer.zemris.java.custom.scripting.exec.SmartScriptEngine;
 import hr.fer.zemris.java.custom.scripting.parser.SmartScriptParser;
 import hr.fer.zemris.java.webserver.RequestContext;
-import hr.fer.zemris.java.webserver.RequestContext.RCCookie;
 
+/**
+ * Program učitava datoteku za zadanim imenom
+ * i pomoću SmartScriptEngine razreda izvršava
+ * program u toj datoteci.
+ * 
+ * @author Valentina Križ
+ *
+ */
 public class SmartScriptEngineDemo {
+	/**
+	 * Metoda od koje počinje izvođenje programa.
+	 * 
+	 * @param args argumenti komandne linije, ne koriste se
+	 */
 	public static void main(String[] args) {
 		String documentBody;
 		try {
