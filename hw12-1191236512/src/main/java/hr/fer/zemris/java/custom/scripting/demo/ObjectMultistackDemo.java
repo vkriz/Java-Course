@@ -1,4 +1,4 @@
-package hr.fer.zemris.java.custom.scripting.exec.demo;
+package hr.fer.zemris.java.custom.scripting.demo;
 
 import hr.fer.zemris.java.custom.scripting.exec.ObjectMultistack;
 import hr.fer.zemris.java.custom.scripting.exec.ValueWrapper;
