@@ -1,20 +1,30 @@
 package hr.fer.zemris.java.webserver;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import hr.fer.zemris.java.webserver.RequestContext.RCCookie;
 
@@ -96,8 +106,9 @@ public class SmartHttpServer {
 		documentRoot = Paths.get(serverProperties.getProperty("server.documentRoot"));
 		sessionTimeout = Integer.parseInt(serverProperties.getProperty("session.timeout"));
 		setMimeTypes(serverProperties.getProperty("server.mimeConfig"));
+		start();
 	}
-	
+
 	/**
 	 * Pomoćna metoda za učitavanje
 	 * mime tipova iz datoteke sa zadanim
@@ -128,16 +139,18 @@ public class SmartHttpServer {
 	 * Metoda za pokretanje servera.
 	 */
 	protected synchronized void start() {
-		// … start server thread if not already running …
-		// … init threadpool by Executors.newFixedThreadPool(...); …
+		serverThread = new ServerThread();
+		serverThread.start();
+		threadPool = Executors.newFixedThreadPool(port);
 	}
 	
 	/**
 	 * Metoda za zaustavljanje servera.
 	 */
+	@SuppressWarnings("deprecation")
 	protected synchronized void stop() {
-		// … signal server thread to stop running …
-		// … shutdown threadpool …
+		serverThread.stop();
+		threadPool.shutdown();
 	}
 	
 	/**
@@ -150,13 +163,23 @@ public class SmartHttpServer {
 	protected class ServerThread extends Thread {
 		@Override
 		public void run() {
-			// given in pesudo-code:
-			// open serverSocket on specified port
-			// while(true) {
-			// Socket client = serverSocket.accept();
-			// ClientWorker cw = new ClientWorker(client);
-			// submit cw to threadpool for execution
-			// }
+			ServerSocket serverSocket;
+			try {
+				serverSocket = new ServerSocket();
+				serverSocket.bind(
+						new InetSocketAddress((InetAddress)null, port)
+					);
+				
+				while(true) {
+					Socket client = serverSocket.accept();
+					ClientWorker cw = new ClientWorker(client);
+					threadPool.submit(cw);
+				}
+			
+			} catch (IOException e) {
+				e.printStackTrace();
+			}	
+			
 		}
 	}
 	
@@ -181,36 +204,169 @@ public class SmartHttpServer {
 		@Override
 		public void run() {
 			// obtain input stream from socket
-			 // obtain output stream from socket
-			 // Then read complete request header from your client in separate method...
-			 List<String> request = readRequest();
-			 // If header is invalid (less then a line at least) return response status 400
-			 String firstLine = request.get(0);
-			 // Extract (method, requestedPath, version) from firstLine
-			 // if method not GET or version not HTTP/1.0 or HTTP/1.1 return response status 400
-			 // Go through headers, and if there is header “Host: xxx”, assign host property
-			 // to trimmed value after “Host:”; else, set it to server’s domainName
-			 // If xxx is of form some-name:number, just remember “some-name”-part
-			 String path; String paramString;
-			 // (path, paramString) = split requestedPath to path and parameterString
-			 // parseParameters(paramString); ==> your method to fill map parameters
-			 // requestedPath = resolve path with respect to documentRoot
-			 // if requestedPath is not below documentRoot, return response status 403 forbidden
-			 // check if requestedPath exists, is file and is readable; if not, return status 404
-			 // else extract file extension
-			 // find in mimeTypes map appropriate mimeType for current file extension
-			 // (you filled that map during the construction of SmartHttpServer from mime.properties)
-			 // if no mime type found, assume application/octet-stream
-			 // create a rc = new RequestContext(...); set mime-type; set status to 200
-			 // If you want, you can modify RequestContext to allow you to add additional headers
-			 // so that you can add “Content-Length: 12345” if you know that file has 12345 bytes
-			 // open file, read its content and write it to rc (that will generate header and send
-			 // file bytes to client)
+			try {
+				InputStream cis = new BufferedInputStream(csocket.getInputStream());
+				OutputStream cos = new BufferedOutputStream(csocket.getOutputStream());
+				byte[] request = readRequest(cis);
+				if(request==null) {
+					sendError(cos, 400, "Bad request");
+					return;
+				}
+				String requestStr = new String(
+					request, 
+					StandardCharsets.US_ASCII
+				);
+				
+				List<String> headers = extractHeaders(requestStr);
+				String[] firstLine = headers.isEmpty() ? 
+					null : headers.get(0).split(" ");
+				if(firstLine==null || firstLine.length != 3) {
+					sendError(cos, 400, "Bad request");
+					return;
+				}
+
+				String method = firstLine[0].toUpperCase();
+				if(!method.equals("GET")) {
+					sendError(cos, 405, "Method Not Allowed");
+					return;
+				}
+				
+				String version = firstLine[2].toUpperCase();
+				if(!version.equals("HTTP/1.1")) {
+					sendError(cos, 505, "HTTP Version Not Supported");
+					return;
+				}
+				
+				for(String header : headers) {
+					if(header.startsWith("Host:")) {
+						host = header.split(":")[0].trim();
+					}
+				}
+				
+				String[] path = firstLine[1].split("\\?");
+				
+				if(path.length == 2) {
+					parseParams(path[1]);
+				}
+				
+				Path documentRoot = Paths.get("./web");
+				Path requestedPath = documentRoot.resolve(path[0].substring(1));
+
+				if(!Files.isReadable(requestedPath)) {
+					sendError(cos, 404, "File not found");
+					return;
+				}
+				
+				int lastDot = requestedPath.toString().lastIndexOf('.');
+				String extension = requestedPath.toString().substring(lastDot + 1);
+				String mimeType = mimeTypes.get(extension);
+				if(mimeType == null) {
+					mimeType = "application/octet-stream";
+				}
+				
+				RequestContext rc = new RequestContext(cos, params, permPrams, outputCookies);
+				rc.setMimeType(mimeType);
+				rc.setStatusCode(200);
+
+			} catch (IOException ex) {
+				System.out.println("Error: " + ex.getMessage());
+			} 
+			
+			try {
+				csocket.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	
+		private void parseParams(String string) {
+			String[] parts = string.split("&");
+			
+			for(String part : parts) {
+				String[] keyValue = part.split("=");
+				
+				if(keyValue.length == 2) {
+					params.put(keyValue[0], keyValue[1]);
+				}
+			}
+		}
+		/**
+		 * Zaglavlje predstavljeno kao jedan string splita po enterima
+		 * pazeći na višeretčane atribute...
+		 * 
+		 * @param requestHeader
+		 * @return
+		 */
+		private List<String> extractHeaders(String requestHeader) {
+			List<String> headers = new ArrayList<String>();
+			String currentLine = null;
+			for(String s : requestHeader.split("\n")) {
+				if(s.isEmpty()) break;
+				char c = s.charAt(0);
+				if(c==9 || c==32) {
+					currentLine += s;
+				} else {
+					if(currentLine != null) {
+						headers.add(currentLine);
+					}
+					currentLine = s;
+				}
+			}
+			if(!currentLine.isEmpty()) {
+				headers.add(currentLine);
+			}
+			return headers;
 		}
 		
-		private List<String> readRequest() {
-			// TODO Auto-generated method stub
-			return null;
+		/**
+		 * Jednostavan automat koji čita zaglavlje HTTP zahtjeva
+		 * 
+		 * @param is
+		 * @return zaglavlje u obliku polja byteova
+		 * @throws IOException
+		 */
+		private byte[] readRequest(InputStream is) throws IOException {
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			int state = 0;
+	l:		while(true) {
+				int b = is.read();
+				if(b==-1) return null;
+				if(b!=13) {
+					bos.write(b);
+				}
+				switch(state) {
+				case 0: 
+					if(b==13) { state=1; } else if(b==10) state=4;
+					break;
+				case 1: 
+					if(b==10) { state=2; } else state=0;
+					break;
+				case 2: 
+					if(b==13) { state=3; } else state=0;
+					break;
+				case 3: 
+					if(b==10) { break l; } else state=0;
+					break;
+				case 4: 
+					if(b==10) { break l; } else state=0;
+					break;
+				}
+			}
+			return bos.toByteArray();
+		}
+		
+		// Pomoćna metoda za slanje odgovora bez tijela...
+		private void sendError(OutputStream cos, int statusCode, String statusText) throws IOException {
+			cos.write(
+					("HTTP/1.1 "+statusCode+" "+statusText+"\r\n"+
+					"Server: simple java server\r\n"+
+					"Content-Type: text/plain;charset=UTF-8\r\n"+
+					"Content-Length: 0\r\n"+
+					"Connection: close\r\n"+
+					"\r\n").getBytes(StandardCharsets.US_ASCII)
+				);
+				cos.flush();
 		}
 	}
 }
