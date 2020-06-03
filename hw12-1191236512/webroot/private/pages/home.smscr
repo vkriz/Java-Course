@@ -1,0 +1,43 @@
+{$= "text/html" @setMimeType $}
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			body {background-color: {$= "background" "0" @tparamGet $};}
+		</style>
+	</head>
+	<body>
+		<a href="/scripts/osnovni.smscr">osnovni.smscr</a>
+		<br>
+		<a href="/scripts/brojPoziva.smscr">brojPoziva.smscr</a>
+		<br>
+		<a href="/scripts/fibonaccih.smscr">fibonnacih.smscr</a>
+		<br>
+		<a href="/hello">HelloWorker</a>
+		<br>
+		<a href="/cw">CircleWorker</a>
+		<br><br>
+		
+		SumWorker: <br>
+		<form action="/calc" method="GET">
+		  	a: <input type="text" id="a" name="a"><br><br>
+		  	b: <input type="text" id="b" name="b"><br><br>
+		  	<input type="submit" value="Submit">
+		</form> 
+		<br><br>
+		
+		BgColorWorker: <br>
+		<form action="/setbgcolor" method="GET">
+			<select name="bgcolor">
+				<option value="FF0000">Red</option>
+				<option value="00FF00">Green</option>
+				<option value="0000FF">Blue</option>
+				<option value="FFFFFF">White</option>
+				<option value="EDEDED">Light Gray</option>
+				<option value="EEDEDED">Bad Color</option>
+				<option value="EDEDJD">Another bad Color</option>
+			</select>
+			<input type="submit" value="Submit">
+		</form>
+	</body>
+</html>

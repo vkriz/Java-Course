@@ -24,13 +24,20 @@ import hr.fer.zemris.java.webserver.RequestContext;
 public class SmartScriptEngineDemo {
 	/**
 	 * Metoda od koje počinje izvođenje programa.
+	 * Metoda očekuje jedan parametar komandne linije
+	 * koji predstavlja ime datoteke koju treba parsirati.
 	 * 
-	 * @param args argumenti komandne linije, ne koriste se
+	 * @param args argumenti komandne linije
 	 */
 	public static void main(String[] args) {
+		if(args.length != 1) {
+			System.out.println("Program prima jedan parametar koji predstavlja ime datoteke.");
+			return;
+		}
+		
 		String documentBody;
 		try {
-			documentBody = readFromDisk("fibonaccih.smscr");
+			documentBody = readFromDisk(args[0]);
 		} catch (IOException e) {
 			System.out.println("Greška pri čitanju datoteke");
 			return;

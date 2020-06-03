@@ -12,7 +12,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Razred predstavlja kontekst 
+ * HTTP zahtjeva.
+ * 
+ * @author Valentina Križ
+ *
+ */
 public class RequestContext {
+	/**
+	 * Pomoćni razred, predstavlja
+	 * kolačiće.
+	 * 
+	 * @author Valentina Križ
+	 *
+	 */
 	public static class RCCookie {
 		/**
 		 * Readonly ime kolačića
@@ -38,6 +52,12 @@ public class RequestContext {
 		 * Readonly maksimalna starost kolačića
 		 */
 		private Integer maxAge;
+		
+		/**
+		 * varijabla koja govori da li je kolačić
+		 * httpOnly
+		 */
+		private boolean httpOnly = false;
 		
 		/**
 		 * Konstruktor koji prima vrijednosti
@@ -101,43 +121,97 @@ public class RequestContext {
 		public Integer getMaxAge() {
 			return maxAge;
 		}
+		
+		/**
+		 * Setter za varijablu httpOnly
+		 * 
+		 * @return maxAge
+		 */
+		public void setHttpOnly(boolean httpOnly) {
+			this.httpOnly = httpOnly;
+		}
+		
+		/**
+		 * Getter za varijablu httpOnly
+		 * 
+		 * @return httpOnly
+		 */
+		public boolean getHttpOnly() {
+			return httpOnly;
+		}
 	}
 	
 	/**
-	 * 
+	 * Izlazni podaci
 	 */
 	private OutputStream outputStream;
+	
+	/**
+	 * Charset
+	 */
 	private Charset charset;
 	
 	/**
-	 * Write-only
+	 * Write-only encoding
 	 */
 	private String encoding;
 	
 	/**
-	 * Write-only
+	 * Write-only status kod
 	 */
 	private int statusCode;
 	
 	/**
-	 * Write-only
+	 * Write-only status tekst
 	 */
 	private String statusText;
 	
 	/**
-	 * Write-only
+	 * Write-only mime tip
 	 */
 	private String mimeType;
+	
+	/**
+	 * Dužina sadržaja
+	 */
 	private Long contentLength;
 	
 	/**
-	 * Read-only
+	 * Read-only mapa parametara
 	 */
 	private Map<String,String> parameters;
+	
+	/**
+	 * Read-only mapa privremenih parametara
+	 */
 	private Map<String,String> temporaryParameters;
+	
+	/**
+	 * Read-only mapa trajnih parametara
+	 */
 	private Map<String,String> persistentParameters;
+	
+	/**
+	 * Lista kolačića
+	 */
 	private List<RCCookie> outputCookies;
+	
+	/**
+	 * boolean varijabla koja govori
+	 * da li je header već generiran
+	 */
 	private boolean headerGenerated;
+	
+	/**
+	 * Read-only
+	 * Referenca na IDispatcher
+	 */
+	private IDispatcher dispatcher;
+	
+	/**
+	 * Id sesije
+	 */
+	private String sid;
 	
 	/**
 	 * Setter za varijablu encoding
@@ -241,7 +315,7 @@ public class RequestContext {
 	 * 
 	 * @return persistentParameters
 	 */
-	public Map<String, String> getPersistentParameterss() {
+	public Map<String, String> getPersistentParameters() {
 		return persistentParameters;
 	}
 	
@@ -252,6 +326,15 @@ public class RequestContext {
 	 */
 	public void setPersistentParameters(Map<String, String> persistentParameters) {
 		this.persistentParameters = persistentParameters;
+	}
+	
+	/**
+	 * Getter za varijablu dispatcher
+	 * 
+	 * @return persistentParameters
+	 */
+	public IDispatcher getDispatcher() {
+		return dispatcher;
 	}
 	
 	/**
@@ -266,15 +349,37 @@ public class RequestContext {
 			Map<String,String> parameters,
 			Map<String,String> persistentParameters,
 			List<RCCookie> outputCookies) {
+		this(outputStream, parameters, persistentParameters, outputCookies, null, null, null);
+	}
+	
+	/**
+	 * Konstruktor koji prima i referencu na
+	 * dispatcher i temporaryParameters
+	 * 
+	 * @param outputStream
+	 * @param parameters
+	 * @param persistentParameters
+	 * @param outputCookies
+	 */
+	public RequestContext(
+			OutputStream outputStream,
+			Map<String,String> parameters,
+			Map<String,String> persistentParameters,
+			List<RCCookie> outputCookies,
+			Map<String, String> temporaryParameters,
+			IDispatcher dispatcher,
+			String sid) {
 		if(outputStream == null) {
 			throw new NullPointerException("OutputStream cannot be null.");
 		}
 		
 		this.outputStream = outputStream;
-		this.parameters = parameters == null ? new HashMap<>() : parameters;
+		this.parameters = parameters == null ? Collections.unmodifiableMap(new HashMap<>()) : parameters;
 		this.temporaryParameters = temporaryParameters == null ? new HashMap<>() : temporaryParameters;
 		this.persistentParameters = persistentParameters == null ? new HashMap<>() : persistentParameters;
 		this.outputCookies = outputCookies == null ? new ArrayList<>() : outputCookies;
+		this.dispatcher = dispatcher;
+		this.sid = sid;
 		
 		// default vrijednosti:
 		encoding = "UTF-8";
@@ -512,6 +617,11 @@ public class RequestContext {
 				sb.append(";  Max-Age=");
 				sb.append(cookie.getMaxAge());
 			}
+			
+			if(cookie.getHttpOnly()) {
+				sb.append("; HttpOnly");
+			}
+			
 			sb.append("\r\n");
 		}
 		

@@ -181,6 +181,9 @@ public class ValueWrapper {
 		throw new IllegalArgumentException("Unsupported argument type.");
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public String toString() {
 		return value.toString();
